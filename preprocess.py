@@ -7,7 +7,6 @@ import re
 import multiprocessing as mp
 import time
 
-
 def wordContextMaker(arg, JobQueue, opts, start, end):
     start_time = time.clock()
     global data_words, wc
@@ -54,6 +53,8 @@ def wordContextMaker(arg, JobQueue, opts, start, end):
 def contextWriter(JobQueue, totalJobs):
     '''listens for messages on the q, writes to file. '''
 
+    global tmp 
+    tmp= []
     print("IN WRITER")
     storageDir = re.sub("\.*", "", opts.data_file) 
     storageDir += "_words/"
@@ -67,17 +68,18 @@ def contextWriter(JobQueue, totalJobs):
 
     while 1:
         wordContexts = JobQueue.get()
-        print("IN WRIter2 ")
-        print(JobQueue.qsize())
+        # print("IN WRIter2", JobQueue.qsize())
 
         if type(wordContexts) == tuple:
             completedJobCount += 1
+            # print(wordContexts)
             if completedJobCount == totalJobs:
                 break
             continue
 
         if wordContexts == 'kill':
             break
+
         for word in wordContexts:
             try:
                 contextList = wordContexts[word]
@@ -85,7 +87,6 @@ def contextWriter(JobQueue, totalJobs):
             except Exception as e:
                 print(e)
                 print("EXCEPTION HERE")
-                print(wordContexts)
                 sys.exit(0)
 
             #append context to word file
@@ -93,10 +94,13 @@ def contextWriter(JobQueue, totalJobs):
 
             with  open(wordFile, "a") as f:
                 try:
+                    tmp.append(contextStr)
                     f.write("%s\n"%contextStr)
                 except Exception as e:
                     print(e)
                 f.close()
+    print("length")
+    print(len(tmp))
 
 def main(opts):
     #must use Manager queue here, or will not work
@@ -141,9 +145,9 @@ def TestWriter(opts):
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
-    args.add_argument("-data_file", type = str, default = "data/text8")
+    args.add_argument("-data_file", type = str, default = "data/small_text8")
     args.add_argument("-min_count", type = int, default = 0)
-    args.add_argument("-num_jobs", type = int, default = 5)
+    args.add_argument("-num_jobs", type = int, default = 3)
     opts =args.parse_args()
 
     global data_text, data_words, wc
