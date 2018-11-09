@@ -18,9 +18,6 @@ def wordContextMaker(arg, JobQueue, opts, start, end):
 
     #create training contexts for every word
     for i in range(start, end):
-        sys.stdout.write("\r" + str(i) )
-        sys.stdout.flush()
-
         #ignore words below threshold number of observations 
         if wc[data_words[i]] <= opts.min_count:
             continue
@@ -41,7 +38,7 @@ def wordContextMaker(arg, JobQueue, opts, start, end):
         if numContexts >= context_memory_threshold:
             JobQueue.put(word_contexts)
             numContexts = 0
-            wordContexts = {}
+            word_contexts = {}
 
     JobQueue.put(word_contexts)
 
@@ -53,9 +50,6 @@ def wordContextMaker(arg, JobQueue, opts, start, end):
 def contextWriter(JobQueue, totalJobs):
     '''listens for messages on the q, writes to file. '''
 
-    global tmp 
-    tmp= []
-    print("IN WRITER")
     storageDir = re.sub("\.*", "", opts.data_file) 
     storageDir += "_words/"
 
@@ -68,11 +62,9 @@ def contextWriter(JobQueue, totalJobs):
 
     while 1:
         wordContexts = JobQueue.get()
-        # print("IN WRIter2", JobQueue.qsize())
 
         if type(wordContexts) == tuple:
             completedJobCount += 1
-            # print(wordContexts)
             if completedJobCount == totalJobs:
                 break
             continue
@@ -94,13 +86,10 @@ def contextWriter(JobQueue, totalJobs):
 
             with  open(wordFile, "a") as f:
                 try:
-                    tmp.append(contextStr)
                     f.write("%s\n"%contextStr)
                 except Exception as e:
                     print(e)
                 f.close()
-    print("length")
-    print(len(tmp))
 
 def main(opts):
     #must use Manager queue here, or will not work

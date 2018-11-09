@@ -7,16 +7,19 @@ from scipy.stats import chi2
 
 
 multivariate_normal = np.random.multivariate_normal
-def gaussian(mu, sig, size):
-    return multivariate_normal(mu, sig, size)
+def gaussian(mu, sig, size=1):
+    if size == 1:
+        return multivariate_normal(mu, sig)
+    else:
+        return multivariate_normal(mu, sig, size)
 
 def invwishartrand_prec(nu,phi):
-    return inv(wishartrand(nu,phi))
+    return inv(wishart(nu,phi))
 
 def invwishartrand(nu, phi):
-    return inv(wishartrand(nu, inv(phi)))
+    return inv(wishart(nu, inv(phi)))
 
-def wishartrand(nu, phi):
+def wishart(nu, phi):
     dim = phi.shape[0]
     chol = cholesky(phi)
     #nu = nu+dim - 1
@@ -30,3 +33,37 @@ def wishartrand(nu, phi):
             else:
                 foo[i,j]  = npr.normal(0,1)
     return np.dot(chol, np.dot(foo, np.dot(foo.T, chol.T)))
+
+def dirichlet(alpha, size):
+    if size == 1:
+        return np.random.dirichlet(alpha) 
+    return np.random.dirichlet(alpha, size) 
+
+def multinomial(n, pvals, size):
+    return np.random.multinomial(n, pvals, size)
+
+def normal_wishart(eps, W, rho, beta):
+    S = wishart(beta, np.linalg.inv(beta*W))
+    mu = gaussian(eps, np.linalg.inv(rho*S))
+
+    return mu, S
+
+def gamma(a, b, size=1):
+    shape = 1.0*a/2
+    scale = 1.0*2*b/a
+    if size == 1:
+        return np.random.gamma(shape, scale)
+    else:
+        return np.random.gamma(shape, scale, size)
+
+
+
+
+
+
+
+
+
+
+
+
