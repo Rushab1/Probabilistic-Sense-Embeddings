@@ -5,9 +5,11 @@ import numpy.random as npr
 from numpy.linalg import inv, cholesky
 from scipy.stats import chi2
 
+from copy import deepcopy
 
 multivariate_normal = np.random.multivariate_normal
 def gaussian(mu, sig, size=1):
+    mu.resize(mu.size)
     if size == 1:
         return multivariate_normal(mu, sig)
     else:
@@ -56,6 +58,8 @@ def gamma(a, b, size=1):
     else:
         return np.random.gamma(shape, scale, size)
 
+def dicrete(probabilities, size):
+    return np.random.choice(range(0,len(probabilities)), size, p=probabilities)
 
 
 

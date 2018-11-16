@@ -4,11 +4,24 @@ from numpy import *
 from Modules.sample import *
 from gensim.models.keyedvectors import KeyedVectors
 from collections import Counter
+import nltk
+nltk.download("stopwords")
+from nltk.corpus import stopwords
+from scipy import special
+
 import gensim
 import os
 import pickle
 
-global hyperparams 
+#functions 
+log = np.log
+gammafn = special.gamma
+trans = np.transpose
+dot = np.dot
+det = np.linalg.det
+exp = np.exp 
+
+remove_stopwords = True
 
 def sprint(x):
     if type(x) != str:
@@ -24,12 +37,16 @@ def spf(x):
 
 class Model:
     def __init__(self, dataDir):
+        global remove_stopwords
+        self.remove_stopwords = remove_stopwords
+        self.stopwords = stopwords.words("english")
+
         self.dataDir = dataDir
         self.text = open(dataDir).read()
         self.hyperparams = Hyperparameters()
         spf("Building Vocab ...")
         self.build_vocab()
-        spf("DONE\n")
+        spf("DONE: Reduced Vocab Size = " + str(len(self.reduced_vocab)) + "\n")
         self.extract_global_word_vectors()
         spf("Building Word structure ...")
         self.build_word_sense_hierarchy()
@@ -38,10 +55,13 @@ class Model:
 
     def build_vocab(self):
         self.vocab = self.text.split()
-
+            
         self.vocab_counter = Counter(self.vocab)
         self.reduced_vocab = [w for w in self.vocab_counter \
             if self.vocab_counter[w]>self.hyperparams.min_count]
+
+        if self.remove_stopwords:
+            self.reduced_vocab = [w for w in self.reduced_vocab if w not in self.stopwords]
 
         self.vocab = list(set(self.vocab))
 
@@ -106,25 +126,56 @@ class Hyperparameters:
         self.min_count = 2 #Vocab min_count
        
 class Sense:
-    def __init__(self, Word, model):
-        self.Word = Word
-        self.word = Word.word
+    def __init__(self, word, model):
+        self.word = word
+        self.word_str = word.word
         self.dim = model.hyperparams.wordvec_dim
         hyperparams = model.hyperparams
 
-        try:
-            self.eps = model.google_vec[self.word]
-        except:
-            self.eps = model.average_google_vec
+        self.mu, self.S = normal_wishart( \
+                self.word.eps,
+                self.word.W, 
+                self.word.rho, 
+                self.word.beta)
+        self.mu = np.matrix(self.mu)
 
-        sig = model.cov_google_vec
-        self.W = wishart(self.dim, 1.0/self.dim * sig )
-        self.rho = gamma(1.0/2, 1.0/2, 1)
+        #data = num_data_points X word_vec_dim
+        #X_sum = sum(data, axis = 0)
+        #XXT = transpose(data) X data
+        #num instances = data points for this sense
+        self.X_sum = np.zeros(self.dim)
+        self.XXT = np.zeros([self.dim, self.dim])
+        self.num_instances = 0
 
-        tmp = gamma(1.0, 1.0/self.dim)
-        self.beta = 1.0/tmp + self.dim - 1
-        self.mu, self.S = normal_wishart(
-                self.eps, self.W, self.rho, self.beta)
+        self.calculate_computation_vars()
+
+    def update_data_vars(self, x):
+        if len(x.shape) == 1:
+            x.resize(1, x.shape[0])
+        self.X_sum = self.X_sum*self.num_instances + \
+                     np.sum(x, axis=0)
+        self.X_sum /= (self.num_instances + len(x))
+        self.XXT += dot(transpose(x), x)
+        self.num_instances += len(x)
+        self.word.num_instances += len(x)
+        self.calculate_computation_vars()
+
+    def calculate_computation_vars(self ):
+        beta = self.word.beta
+        W = self.word.W
+        eps = self.word.eps
+        rho = self.word.rho
+        #variables to ease computation
+        self.eps_star = rho*eps + self.X_sum
+        self.eps_star /= rho + self.num_instances
+
+        eps.resize(1, eps.shape[0])
+        self.W_star = beta*W +rho*np.dot(np.transpose(eps), eps)
+        self.W_star += self.XXT
+        self.W_star += (rho + self.num_instances) * \
+                       np.dot(np.transpose(self.eps_star), \
+                       self.eps_star)
+        self.eps_star = 0
 
 class Word:
     def __init__(self, word, model):
@@ -132,8 +183,32 @@ class Word:
         hyperparams = model.hyperparams
         self.alpha = gamma(1.0, 1.0)
         dim = hyperparams.wordvec_dim
-        self.pi = dirichlet(np.ones(dim) * self.alpha, 1)
+        self.dim = dim
         self.K = 1
+        self.pi = [1]
+        self.c = 0 
+        self.num_instances = 0
+
+        try:
+            self.eps_mean = model.google_vec[self.word]
+            self.eps_cov = model.cov_google_vec
+            # self.eps = gaussian( \
+                    # model.google_vec[self.word],
+                    # model.cov_google_vec)
+        except:
+            self.eps_mean = model.average_google_vec
+            self.eps_cov = model.cov_google_vec
+            # self.eps = gaussian(model.average_google_vec, \
+                    # model.cov_google_vec)
+        
+        self.eps = gaussian(self.eps_mean, self.eps_cov)
+        self.eps = np.matrix(self.eps)
+        sig = model.cov_google_vec
+        self.W = wishart(dim, 1.0/dim * sig )
+        self.rho = gamma(1.0/2, 1.0/2, 1)
+
+        tmp = gamma(1.0, 1.0/dim)
+        self.beta = 1.0/tmp + dim - 1
         self.senses = [Sense(self, model)]
 
     def new_sense(self, sense):
@@ -149,27 +224,10 @@ class Word:
         return global_vector
 
 
-class Context:
-    def get_context_vector(self, sent, model):
-        if type(sent) == str:
-            self.words = sent.split()
-
-        dim = model.hyperparams.wordvec_dim
-        context = np.zeros(dim)
-        cnt = 0
-        for word in sent:
-            try:
-                context += google_vec[word]
-                cnt += 1
-            except:
-                continue
-        context /= cnt
-
-
-
 
 if __name__ == "__main__":
     m = Model("../data/small_text8")
+    pickle.dump(m, open("model.pkl", "wb"))
 
 
 

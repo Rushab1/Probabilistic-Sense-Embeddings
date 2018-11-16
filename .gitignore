@@ -3,3 +3,7 @@ GoogleNews-vectors-negative300.bin.gz
 CIS620/*
 py/*
 google/*
+*pkl
+*pyc
+pyModules/*
+
