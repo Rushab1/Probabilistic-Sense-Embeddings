@@ -9,7 +9,6 @@ def calculate_computation_vars(sense ):
         sense.eps_star /= rho + sense.num_instances
 
         eps.resize(1, eps.size)
-        print(eps.shape)
         sense.W_star = beta*W 
         global tmp
         tmp = rho*np.dot(np.transpose(eps), eps)
@@ -19,5 +18,5 @@ def calculate_computation_vars(sense ):
         sense.W_star += (rho + sense.num_instances) * \
                        np.dot(np.transpose(sense.eps_star), \
                        sense.eps_star)
-        sense.eps_star = 0
+        # sense.eps_star = 0
 

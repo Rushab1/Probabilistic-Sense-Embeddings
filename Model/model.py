@@ -1,27 +1,32 @@
 import sys
 sys.path.append("../")
+
 from numpy import *
 from Modules.sample import *
 from gensim.models.keyedvectors import KeyedVectors
 from collections import Counter
 import nltk
-nltk.download("stopwords")
 from nltk.corpus import stopwords
 from scipy import special
+from ARS import *
+from train import *
 
 import gensim
 import os
 import pickle
+import argparse
 
 #functions 
 log = np.log
 gammafn = special.gamma
+digammafn = special.digamma
 trans = np.transpose
 dot = np.dot
 det = np.linalg.det
 exp = np.exp 
 
 remove_stopwords = True
+min_count = 10
 
 def sprint(x):
     if type(x) != str:
@@ -36,7 +41,7 @@ def spf(x):
     sflush()
 
 class Model:
-    def __init__(self, dataDir):
+    def __init__(self, dataDir, extract_google_vec):
         global remove_stopwords
         self.remove_stopwords = remove_stopwords
         self.stopwords = stopwords.words("english")
@@ -47,7 +52,7 @@ class Model:
         spf("Building Vocab ...")
         self.build_vocab()
         spf("DONE: Reduced Vocab Size = " + str(len(self.reduced_vocab)) + "\n")
-        self.extract_global_word_vectors()
+        self.extract_global_word_vectors(extract_google_vec)
         spf("Building Word structure ...")
         self.build_word_sense_hierarchy()
         spf("DONE")
@@ -65,14 +70,17 @@ class Model:
 
         self.vocab = list(set(self.vocab))
 
-    def extract_global_word_vectors(self, \
+    def extract_global_word_vectors(self, extract_google_vec = False, \
             google_vec_file = \
             "../google/GoogleNews-vectors-negative300.bin"):
         dataDir = self.dataDir
 
-        if os.path.exists(dataDir + "_dir_google_vec.pkl"):
+        if extract_google_vec==False and \
+                os.path.exists(dataDir+"_dir_google_vec.pkl"):
+                    
             f = open(dataDir + "_dir_google_vec.pkl", "rb")
             self.google_vec = pickle.load(f)
+
         else:
             sprint("Google vectors for " + dataDir + " not found")
             sprint("...Extracting word vectors\n")
@@ -109,7 +117,7 @@ class Model:
             if type(vec) != str:
                 tmp.append(vec)
         tmp = np.matrix(tmp)
-        self.cov_google_vec = np.dot(np.transpose(tmp), tmp)
+        # self.cov_google_vec = np.dot(np.transpose(tmp), tmp) * 1e-7
 
 
     def build_word_sense_hierarchy(self):
@@ -122,8 +130,9 @@ class Model:
 
 class Hyperparameters:
     def __init__(self):
+        global min_count
         self.wordvec_dim = 300
-        self.min_count = 2 #Vocab min_count
+        self.min_count = min_count #Vocab min_count
        
 class Sense:
     def __init__(self, word, model):
@@ -131,12 +140,7 @@ class Sense:
         self.word_str = word.word
         self.dim = model.hyperparams.wordvec_dim
         hyperparams = model.hyperparams
-
-        self.mu, self.S = normal_wishart( \
-                self.word.eps,
-                self.word.W, 
-                self.word.rho, 
-                self.word.beta)
+        self.mu, self.S = self.word.sample_params()
         self.mu = np.matrix(self.mu)
 
         #data = num_data_points X word_vec_dim
@@ -148,6 +152,7 @@ class Sense:
         self.num_instances = 0
 
         self.calculate_computation_vars()
+
 
     def update_data_vars(self, x):
         if len(x.shape) == 1:
@@ -169,17 +174,18 @@ class Sense:
         self.eps_star = rho*eps + self.X_sum
         self.eps_star /= rho + self.num_instances
 
-        eps.resize(1, eps.shape[0])
+        eps.resize(1, eps.size)
         self.W_star = beta*W +rho*np.dot(np.transpose(eps), eps)
         self.W_star += self.XXT
         self.W_star += (rho + self.num_instances) * \
                        np.dot(np.transpose(self.eps_star), \
                        self.eps_star)
-        self.eps_star = 0
+        # self.eps_star = 0
 
 class Word:
     def __init__(self, word, model):
         self.word = word
+        self.model = model
         hyperparams = model.hyperparams
         self.alpha = gamma(1.0, 1.0)
         dim = hyperparams.wordvec_dim
@@ -189,27 +195,42 @@ class Word:
         self.c = 0 
         self.num_instances = 0
 
-        try:
-            self.eps_mean = model.google_vec[self.word]
-            self.eps_cov = model.cov_google_vec
-            # self.eps = gaussian( \
-                    # model.google_vec[self.word],
-                    # model.cov_google_vec)
-        except:
-            self.eps_mean = model.average_google_vec
-            self.eps_cov = model.cov_google_vec
-            # self.eps = gaussian(model.average_google_vec, \
-                    # model.cov_google_vec)
+        self.set_param_priors()
+
+        # try:
+            # self.eps_mean = model.google_vec[self.word]
+            # self.eps_cov = model.cov_google_vec
+        # except:
+            # self.eps_mean = model.average_google_vec
+            # self.eps_cov = model.cov_google_vec
         
+        print("-----------------")
         self.eps = gaussian(self.eps_mean, self.eps_cov)
+        print("-----------------")
         self.eps = np.matrix(self.eps)
-        sig = model.cov_google_vec
+        # sig = model.cov_google_vec
+        sig = self.eps_cov
         self.W = wishart(dim, 1.0/dim * sig )
         self.rho = gamma(1.0/2, 1.0/2, 1)
 
         tmp = gamma(1.0, 1.0/dim)
         self.beta = 1.0/tmp + dim - 1
         self.senses = [Sense(self, model)]
+
+    def set_param_priors(self):
+        global x
+        c = Contexts(self.model)
+        contexts = c.get_all_contexts(self.word)
+        self.eps_mean = np.mean(contexts, axis=0)
+
+        x = contexts - self.eps_mean
+        n = len(contexts)
+        # self.eps_cov = dot(trans(x), x) / n
+        self.eps_cov = np.eye(300)*0.01
+
+    def sample_alpha(self):
+        return self.ARS.draw()
+
 
     def new_sense(self, sense):
         #self.pi = UPDATE 
@@ -223,10 +244,20 @@ class Word:
             global_vector = "<UNK>"
         return global_vector
 
+    def sample_params(self):
+        return normal_wishart( \
+                self.eps,
+                self.W, 
+                self.rho, 
+                self.beta)
 
 
 if __name__ == "__main__":
-    m = Model("../data/small_text8")
+    args = argparse.ArgumentParser()
+    args.add_argument("-extract_google_vec", type=int, default=0)
+    opts = args.parse_args()
+
+    m = Model("../data/small_text8", opts.extract_google_vec)
     pickle.dump(m, open("model.pkl", "wb"))
 
 

@@ -41,19 +41,30 @@ class Contexts:
         self.wordfile_line[word] = i
         return context_array
 
+    def get_all_contexts(self, word):
+        f = open(self.dataDir + word).read().strip().split("\n")
+        context_array = np.zeros([len(f), self.dim])
+
+        f = list(set(f))
+
+        for i in range(0, len(f)):
+            context_array[i] = self.get_context_vector(f[i].split())
+        return context_array
+
     def get_context_vector(self, sent):
         if type(sent) == str:
-            self.words = sent.split()
+            sent = sent.split()
 
         context = np.zeros(self.dim)
         cnt = 0
         model = self.model
+
         for word in sent:
             try:
                 context += self.model.google_vec[word]
                 cnt += 1
             except Exception as e:
-                # print("-----------------")
+                # print("______________________")
                 # print(e)
                 continue
         context /= cnt
