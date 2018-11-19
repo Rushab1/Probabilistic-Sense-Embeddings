@@ -13,7 +13,7 @@ det = np.linalg.det
 exp = np.exp 
 normPDF = multivariate_normal_fn.pdf
 
-num_auxilary_classes = 3
+num_auxilary_classes = 10
 
 def inv(X):
     return np.linalg.inv(X)
@@ -97,12 +97,13 @@ def ARS_fn_der(alpha, n, k):
     return val
     
 def update_alpha(word):
-    word.ARS = ARS(ARS_fn, ARS_fn_der, lb=0, xi = [1e-5, 1, 20],\
+    word.ARS = ARS(ARS_fn, ARS_fn_der, lb=0, xi = [1e-5, 1, 6], use_lower=True,\
                    n=word.num_instances,
                    k=len(word.senses))
     word.alpha = word.ARS.draw(1)[0]
 
 def calculate_sense_prob(model, word, x):
+    global S
     D = word.dim * 1.0
     rho = word.rho*1.0
     eps = word.eps
@@ -112,120 +113,81 @@ def calculate_sense_prob(model, word, x):
     alpha = word.alpha*1.0
     n = word.num_instances*1.0
  
-    c = 5e-5
+    c = 1e-3
     invc = 1./c
     sense_prob = np.zeros(len(word.senses))
 
     for j in range(0, len(word.senses)):
-        sense = word.senses[j]
-        mu = word.senses[j].mu
-        S = word.senses[j].S
-        mu.resize(mu.size)
+        s = word.senses[j]
+        mu = s.mu
+        # S = s.S
+        #Change THIS
+        S = inv(word.eps_cov)
 
-        sense_prob[j] = log(1.0*sense.num_instances / (n - 1 + alpha))
-        tmp = 1.0*D/2*log(det(c*S)/(2*pi)) + D*D/2*log(invc)
+        print(mu[0])
+        mu.resize(mu.size, 1)
+        x.resize(x.size, 1)
+
+        sense_prob[j] = log(1.0*s.num_instances / (n - 1 + alpha))
+        # print(c*S)
+        tmp = -D/2*log(2*pi) + 0.5*log(det(c*S)) + D/2*log(invc)
         tmp -= 0.5*np.dot( np.dot(trans(x-mu), S), x-mu )
         sense_prob[j] += tmp
 
-        # print(sense_prob[j], log(det(c*S)) + 300*log(invc))
+        # print(sense_prob[j], log(det(c*S)) + D*D/2*log(invc))
+    print(sense_prob)
     return sense_prob
 
-def update_indicators(model, word, x):
+def update_indicators(model, word):
     global W_star, eps_star
     global num_auxilary_classes
 
-    D = word.dim * 1.0
-    rho = word.rho*1.0
-    eps = word.eps
-    beta = word.beta*1.0
-    W = word.W
-    pi = np.pi  
+    # D = word.dim * 1.0
+    # rho = word.rho*1.0
+    # eps = word.eps
+    # beta = word.beta*1.0
+    # W = word.W
+    # pi = np.pi  
     alpha = word.alpha*1.0
-    n = word.num_instances*1.0
+    # n = word.num_instances*1.0
 
-    sense_prob = np.zeros(len(word.senses) + num_auxilary_classes)
-    sense_prob = log(sense_prob)
+    # sense_prob = np.zeros(len(word.senses) + num_auxilary_classes)
+    # sense_prob = log(sense_prob)
 
-    c = 5e-5
-    invc = 1./c
-
-    sense_prob[0:len(word.senses)] = calculate_sense_prob(model, word, x)
-    # for j in range(0, len(word.senses)):
-        # sense = word.senses[j]
-        # mu = word.senses[j].mu
-        # S = word.senses[j].S
-        # mu.resize(mu.size)
-
-        # sense_prob[j] = log(1.0*sense.num_instances / (n - 1 + alpha))
-
-        # tmp = 1.0*D/2*log(det(c*S)/(2*pi)) + D*D/2*log(invc)
-        # tmp -= 0.5*np.dot( np.dot(trans(x-mu), S), x-mu )
-
-        # sense_prob[j] += tmp
-        # print(sense_prob[j], log(det(c*S)) + D*D/2*log(invc))
-
-
-
-    max_prob = np.max(sense_prob)
-    j_max  = np.argmax(sense_prob)
-    
-    for j in range(len(word.senses), len(word.senses) + num_auxilary_classes):
-        # mu, S = word.sample_params()
-
-        mu,S =  normal_wishart( \
-                word.eps,
-                word.W, 
-                word.rho, 
-                word.beta)
-
-        sense_prob[j] = 1.0*(alpha / num_auxilary_classes )
-        sense_prob[j] /= n - 1 + alpha
-        sense_prob[j]  =log(sense_prob[j])
-
-
-        tmp =  D/2  *log( det(c*S) / (2*pi) ) 
-        tmp += D/2 * D * log(invc)
-        tmp -= 0.5*np.dot( np.dot(trans(x-mu), S), x-mu )
-
-        # sense_prob[j] += 1.0*D/2*log(det(S)/(2*pi)) - 0.5*np.dot( np.dot(trans(x-mu), S), x-mu )
-        sense_prob[j] += tmp
-
-        # print(sense_prob[j], log(det(c*S)) + 300*log(invc))
-        
-        if sense_prob[j] > max_prob:
-            j_max = j
-            mu_max = mu
-            S_max = S
-            max_prob = sense_prob[j]
-            print("HIII")
-        else:
-            del mu, S
-
-    if np.argmax(sense_prob) >= len(word.senses):
-        print("New Sense")
+    for j in range(0, num_auxilary_classes):
+        mu, S = word.sample_params()
+        #Remove this
+        # mu = gaussian(word.eps_mean, eps_cov)
+        # S = 1000*np.eye(300)
         sense = Sense(word, model)
-        sense.mu = mu_max
-        sense.S = S_max
+        sense.mu = mu
+        sense.S = S
+        # print(S)
         sense.num_instances = alpha/num_auxilary_classes
-        # sense.update_data_vars(x)
-        word.senses.append(sense)
-    # else:
-        # word.senses[j_max].update_data_vars(x)
+        wword.senses.append(sense)
 
-    print(word.senses)
+    # sense_prob = calculate_sense_prob(model, word, x)
+
+    # max_prob = np.max(sense_prob)
+    # j_max  = np.argmax(sense_prob)
+    
     #Recalculate all indicators
-    c = Contexts(model)
+    c = Contexts(model, model.dataDir + "_words/")
     x = c.get_all_contexts(word.word)
     n = len(x)
     k = len(word.senses)
 
     nk = np.zeros(k)
+    ind_list = np.zeros(n)
     for i in range(0, n):
         sense_prob = calculate_sense_prob(model, word, x[i])
         argmax = np.argmax(sense_prob)
+        ind_list[i] = argmax
         nk[argmax] += 1
     
-    # print(nk)
+    print(nk)
+    print(ind_list)
+    print("_________________")
     nk = list(nk)
     i = 0
     while i < len(word.senses):
@@ -237,9 +199,6 @@ def update_indicators(model, word, x):
         i += 1
 
     word.num_instances = sum(nk)
-    print(nk)
-
-    return sense_prob
     #First data point for the word
     # if n == 0:  
         # word.senses[0].update_data_vars(x)
@@ -295,7 +254,7 @@ def xload(flag, c = None, word="state"):
     global s, t, C, cword, wword, m  
     if flag:
         m = pickle.load(open("./model.pkl", "rb"))
-        c = Contexts(m)
+        c = Contexts(m, m.dataDir)
     t = c.get_new_contexts(word)
     C = c
     cword = word

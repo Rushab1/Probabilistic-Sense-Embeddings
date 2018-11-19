@@ -26,7 +26,7 @@ det = np.linalg.det
 exp = np.exp 
 
 remove_stopwords = True
-min_count = 50
+min_count = 10
 
 def sprint(x):
     if type(x) != str:
@@ -51,7 +51,7 @@ class Model:
         self.hyperparams = Hyperparameters()
         spf("Building Vocab ...")
         self.build_vocab()
-        spf("DONE: Reduced Vocab Size = " + str(len(self.reduced_vocab)) + "/" + str(len(self.vocab)) + "\n")
+        spf("DONE: Reduced Vocab Size = " + str(len(self.reduced_vocab)) + "\n")
         self.extract_global_word_vectors(extract_google_vec)
         spf("Building Word structure ...")
         self.build_word_sense_hierarchy()
@@ -119,26 +119,14 @@ class Model:
         tmp = np.matrix(tmp)
         # self.cov_google_vec = np.dot(np.transpose(tmp), tmp) * 1e-7
 
+
     def build_word_sense_hierarchy(self):
         self.Words = {}
         cnt = 1
-
-        not_found = []
         for word in self.reduced_vocab:
-            if os.path.exists(self.dataDir + "_words/" + word):
-                spf(str(cnt) + "\r" )
-                cnt += 1
-                self.Words[word] = Word(word, self)
-            else:
-                not_found.append(word)
-            
-        i = 0
-        while i < len(self.reduced_vocab):
-            if self.reduced_vocab[i][0] in not_found:
-                del self.reduced_vocab[i]
-            else:
-                i+=1
-
+            spf(str(cnt) )
+            cnt += 1
+            self.Words[word] = Word(word, self)
 
 class Hyperparameters:
     def __init__(self):
@@ -216,9 +204,9 @@ class Word:
             # self.eps_mean = model.average_google_vec
             # self.eps_cov = model.cov_google_vec
         
-        # print("-----------------")
+        print("-----------------")
         self.eps = gaussian(self.eps_mean, self.eps_cov)
-        # print("-----------------")
+        print("-----------------")
         self.eps = np.matrix(self.eps)
         # sig = model.cov_google_vec
         sig = self.eps_cov
@@ -231,7 +219,7 @@ class Word:
 
     def set_param_priors(self):
         global x
-        c = Contexts(self.model, self.model.dataDir + "_words/")
+        c = Contexts(self.model)
         contexts = c.get_all_contexts(self.word)
         self.eps_mean = np.mean(contexts, axis=0)
 
@@ -272,7 +260,7 @@ if __name__ == "__main__":
     args.add_argument("-extract_google_vec", type=int, default=0)
     opts = args.parse_args()
 
-    m = Model(opts.datadir, opts.extract_google_vec)
+    m = Model("../data/small_text8", opts.extract_google_vec)
     pickle.dump(m, open("model.pkl", "wb"))
 
 
