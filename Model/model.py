@@ -26,7 +26,7 @@ det = np.linalg.det
 exp = np.exp 
 
 remove_stopwords = True
-min_count = 50
+min_count = 200
 
 def sprint(x):
     if type(x) != str:
@@ -41,7 +41,12 @@ def spf(x):
     sflush()
 
 class Model:
-    def __init__(self, dataDir, extract_google_vec):
+    def __init__(self, 
+            dataDir, 
+            extract_google_vec, 
+            google_vec_type = "google", #'google' OR 'glove'
+            google_vec_dim = 300 #50, 100, 200, 300 for glove, 300 for google
+            ):
         global remove_stopwords
         self.remove_stopwords = remove_stopwords
         self.stopwords = stopwords.words("english")
@@ -49,10 +54,17 @@ class Model:
         self.dataDir = dataDir
         self.text = open(dataDir).read()
         self.hyperparams = Hyperparameters()
+        self.hyperparams.wordvec_dim = google_vec_dim
         spf("Building Vocab ...")
         self.build_vocab()
         spf("DONE: Reduced Vocab Size = " + str(len(self.reduced_vocab)) + "/" + str(len(self.vocab)) + "\n")
-        self.extract_global_word_vectors(extract_google_vec)
+
+        if google_vec_type == "google":
+            google_vec_file = "../google/GoogleNews-vectors-negative300.bin"
+        elif google_vec_type == "glove":
+            google_vec_file = "../google/glove.6B." + str(google_vec_dim) + "d.txt"
+
+        self.extract_global_word_vectors(extract_google_vec, google_vec_file, google_vec_type)
         spf("Building Word structure ...")
         self.build_word_sense_hierarchy()
         spf("DONE")
@@ -72,20 +84,32 @@ class Model:
 
     def extract_global_word_vectors(self, extract_google_vec = False, \
             google_vec_file = \
-            "../google/GoogleNews-vectors-negative300.bin"):
-        dataDir = self.dataDir
+            "../google/GoogleNews-vectors-negative300.bin",
+            google_vec_type = "google"):
 
+        dataDir = self.dataDir
         if extract_google_vec==False and \
-                os.path.exists(dataDir+"_dir_google_vec.pkl"):
+                os.path.exists(dataDir+"_dir_" + google_vec_type + "_vec.pkl"):
                     
-            f = open(dataDir + "_dir_google_vec.pkl", "rb")
+            f = open(dataDir + "_dir_"+ google_vec_type + "_vec.pkl", "rb")
             self.google_vec = pickle.load(f)
 
         else:
-            sprint("Google vectors for " + dataDir + " not found")
+            sprint(google_vec_type + "vectors for " + dataDir + " not found")
             sprint("...Extracting word vectors\n")
-            full_google_vec = KeyedVectors.load_word2vec_format(\
+
+            if google_vec_type == "google":
+                full_google_vec = KeyedVectors.load_word2vec_format(\
                     google_vec_file, binary=True)
+
+            elif google_vec_type == "glove":
+                from gensim.test.utils import datapath, get_tmpfile
+                from gensim.scripts.glove2word2vec import glove2word2vec
+                glove_file = datapath(os.path.abspath(google_vec_file))
+                tmp_file = tmp_file = get_tmpfile("test_word2vec.txt")
+                glove2word2vec(glove_file, tmp_file)
+                full_google_vec = KeyedVectors.load_word2vec_format(tmp_file)
+
             self.google_vec = {}
             words_not_present = []
 
@@ -97,7 +121,7 @@ class Model:
             sprint("Words missing : " + str(len(words_not_present)))
             open(dataDir + "_words_not_present", "w").write(\
                     "\n".join(words_not_present))
-            f = open(dataDir + "_dir_google_vec.pkl", "wb")
+            f = open(dataDir + "_dir_" + google_vec_type +"_vec.pkl", "wb")
             sprint("...Saving word vectors")
             pickle.dump(self.google_vec, f)
             sprint('...DONE\n')
@@ -122,8 +146,9 @@ class Model:
     def build_word_sense_hierarchy(self):
         self.Words = {}
         cnt = 1
-
         not_found = []
+        print()
+
         for word in self.reduced_vocab:
             if os.path.exists(self.dataDir + "_words/" + word):
                 spf(str(cnt) + "\r" )
@@ -159,11 +184,11 @@ class Sense:
         #X_sum = sum(data, axis = 0)
         #XXT = transpose(data) X data
         #num instances = data points for this sense
-        self.X_sum = np.zeros(self.dim)
-        self.XXT = np.zeros([self.dim, self.dim])
+        # self.X_sum = np.zeros(self.dim)
+        # self.XXT = np.zeros([self.dim, self.dim])
         self.num_instances = 0
 
-        self.calculate_computation_vars()
+        # self.calculate_computation_vars()
 
 
     def update_data_vars(self, x):
@@ -222,7 +247,12 @@ class Word:
         self.eps = np.matrix(self.eps)
         # sig = model.cov_google_vec
         sig = self.eps_cov
-        self.W = wishart(dim, 1.0/dim * sig )
+        try:
+            self.W = wishart(dim, 1.0/dim * sig )
+        except:
+            print("Error")
+            self.W = wishart(dim, 1.0/dim * np.eye(self.dim)*0.001)
+
         self.rho = gamma(1.0/2, 1.0/2, 1)
 
         tmp = gamma(1.0, 1.0/dim)
@@ -237,10 +267,10 @@ class Word:
 
         x = contexts - self.eps_mean
         n = len(contexts)
-        # self.eps_cov = dot(trans(x), x) / n
+        self.eps_cov = dot(trans(x), x) / n
 
         #Remove This
-        self.eps_cov = np.eye(300)*0.01
+        # self.eps_cov = np.eye(self.dim)*0.01
 
     def sample_alpha(self):
         return self.ARS.draw()
@@ -259,20 +289,28 @@ class Word:
         return global_vector
 
     def sample_params(self):
-        return normal_wishart( \
+        try: 
+            mu, S = normal_wishart( \
                 self.eps,
                 self.W, 
                 self.rho, 
                 self.beta)
+        except:
+            print("WISHART Error")
+            S = np.eye(300)*0.001
+            mu = gaussian(self.eps, inv(self.rho*S))
 
+        return mu, S
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
     args.add_argument("-datadir", type=str, default="../data/small_text8")
     args.add_argument("-extract_google_vec", type=int, default=0)
+    args.add_argument("-google_vec_type", type=str, default="google")
+    args.add_argument("-google_vec_dim", type=int, default=300)
     opts = args.parse_args()
 
-    m = Model(opts.datadir, opts.extract_google_vec)
+    m = Model(opts.datadir, opts.extract_google_vec, opts.google_vec_type, opts.google_vec_dim)
     pickle.dump(m, open("model.pkl", "wb"))
 
 

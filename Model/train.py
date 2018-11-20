@@ -1,8 +1,41 @@
 #Parallelized training
 import numpy as np
+norm = np.linalg.norm
 
 params = {"batch_size": 10,
           "num_jobs": 10}
+
+def get_neighbours_word(n, model, word):
+    w = np.array(model.Words[word].eps)
+    list1 = []
+    list2 = []
+    for j in model.Words:
+        i = model.Words[j].word
+        x = np.array(model.Words[j].eps)
+        list1.append(norm(w-x))
+        list2.append(i)
+    list1, list2 = zip(*sorted(zip(list1, list2)))
+    print(list2[:n])
+    print(list1[:n])
+
+def get_neighbours_sense(n, model, sense):
+    w = sense.mu
+    w.resize(1, w.size)
+    list1 = []
+    list2 = []
+    for j in model.Words:
+        i = model.Words[j].word
+        x = model.Words[j].eps_mean
+        x.resize(w.shape)
+        assert(w.shape == x.shape)
+        list1.append(norm(w-x))
+        list2.append(i)
+    list1, list2 = zip(*sorted(zip(list1, list2)))
+    print(list2[:n])
+    print(list1[:n])
+    
+
+
 
 class Contexts:
     def __init__(self, model, dataDir = "../data/small_text8_words/"):
@@ -29,11 +62,17 @@ class Contexts:
         i = start
         
         while 1:
-            context_array[cnt] = self.get_context_vector(f[i].split())
-            cnt += 1
+            print(f[i])
+            tmp = self.get_context_vector(f[i].split())
             i += 1
             if i == len(f):
                 i = 0
+
+            if tmp == "UNDEFINED":
+                continue
+            context_array[cnt] = tmp
+            cnt += 1
+
             if cnt == self.batch_size:
                 break
 
@@ -48,7 +87,9 @@ class Contexts:
         f = list(set(f))
 
         for i in range(0, len(f)):
-            context_array[i] = self.get_context_vector(f[i].split())
+            tmp = self.get_context_vector(f[i].split())
+            if tmp != "UNDEFINED":
+                context_array[i] = tmp
         return context_array
 
     def get_context_vector(self, sent):
@@ -67,7 +108,11 @@ class Contexts:
                 # print("______________________")
                 # print(e)
                 continue
-        context /= cnt
+        if cnt == 0:
+            print(sent)
+            return "UNDEFINED"
+        else:
+            context /= cnt
         return context
 
 
