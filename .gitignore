@@ -6,4 +6,6 @@ google/*
 *pkl
 *pyc
 pyModules/*
+*swp
+modelfiles/*
 
