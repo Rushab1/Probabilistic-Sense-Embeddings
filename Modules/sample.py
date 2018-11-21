@@ -22,6 +22,9 @@ def invwishartrand(nu, phi):
     return inv(wishart(nu, inv(phi)))
 
 def wishart(nu, phi):
+    from scipy.stats import wishart
+    return wishart.rvs(nu, phi)
+
     dim = phi.shape[0]
     chol = cholesky(phi)
     #nu = nu+dim - 1

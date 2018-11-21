@@ -2,6 +2,7 @@ from scipy import special
 import numpy as np
 from scipy.stats import multivariate_normal as multivariate_normal_fn
 from ARS import *
+from train import *
 
 #functions 
 log = np.log
@@ -14,13 +15,15 @@ exp = np.exp
 normPDF = multivariate_normal_fn.pdf
 
 num_auxilary_classes = 10
+sense_per = 0.1
+
 
 def inv(X):
     return np.linalg.inv(X)
 
 #X = num_observations * wordvec_dim
 def update_parameters(X, sense):
-    get_neighbours_sense(10, sense.word.model, sense)
+    # get_neighbours_sense(10, sense.word.model, sense)
     global S, eps, rho, W,beta, mu ,mean, tmp, scale_matrix, cov, X_sum
     
     X.resize(1,sense.dim)
@@ -48,7 +51,7 @@ def update_parameters(X, sense):
     mean = dot(cov, dot(S, rho* eps + X_sum))
     sense.mu = gaussian(mean, cov)
 
-    get_neighbours_sense(10, sense.word.model, sense)
+    # get_neighbours_sense(10, sense.word.model, sense)
 
     #update precision S
     mu = sense.mu
@@ -160,7 +163,14 @@ def update_indicators(model, word):
         word.senses.append(sense)
 
     #Recalculate all indicators
-    c = Contexts(model, model.dataDir + "_words/")
+    try:
+        from train import Contexts
+        c = Contexts(model, model.dataDir + "_words/")
+    except Exception as e:
+        print("1----------------")
+        print(e)
+        print("2----------------")
+        sys.exit(0)
     x = c.get_all_contexts(word.word)
     n = len(x)
     k = len(word.senses)
@@ -174,16 +184,26 @@ def update_indicators(model, word):
         nk[argmax] += 1
     
     #delete senses with no data i.e. num_instances = 0
+    n = int(np.sum(nk))
     nk = list(nk)
     i = 0
     while i < len(word.senses):
-        if nk[i] == 0:
+        if nk[i] < sense_per*n:
             del word.senses[i]
             del nk[i]
             continue
         word.senses[i].num_instances = nk[i]
         i += 1
 
+    k = len(word.senses)
+    nk = np.zeros(k)
+    ind_list = np.zeros(n)
+    for i in range(0, n):
+        sense_prob = calculate_sense_prob(model, word, x[i])
+        argmax = np.argmax(sense_prob)
+        ind_list[i] = argmax
+        nk[argmax] += 1
+    
     word.num_instances = sum(nk)
     return nk
 

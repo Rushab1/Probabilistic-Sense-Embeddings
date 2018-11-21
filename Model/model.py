@@ -26,7 +26,7 @@ det = np.linalg.det
 exp = np.exp 
 
 remove_stopwords = True
-min_count = 200
+min_count = 50
 
 def sprint(x):
     if type(x) != str:
@@ -297,7 +297,7 @@ class Word:
                 self.beta)
         except:
             print("WISHART Error")
-            S = np.eye(300)*0.001
+            S = np.eye(self.wordvec_dim)*0.001
             mu = gaussian(self.eps, inv(self.rho*S))
 
         return mu, S
