@@ -154,11 +154,13 @@ def Updater(JobQueue, word_str, model, contexts, num_batches = 20):
         print("Exception in Updater")
         print(e)
     print("Done")
+    JobQueue.put(word_str)
     return word
 
 
 def Writer(JobQueue, checkpoint_dir, model):
     while 1:
+
         try:
             time.sleep(200)
 
@@ -174,6 +176,9 @@ def Writer(JobQueue, checkpoint_dir, model):
             f = open(checkpoint_dir+"last_checkpoint.txt", "w")
             f.write(str(chkpt_num))
             f.close()
+            if len(JobQueue) == len(model.Words):
+                break
+
         except Exception as e:
             print(e)
 
