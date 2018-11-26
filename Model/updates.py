@@ -16,6 +16,7 @@ normPDF = multivariate_normal_fn.pdf
 
 num_auxilary_classes = 10
 sense_per = 0.1
+nu = 0.95
 
 
 def inv(X):
@@ -49,18 +50,27 @@ def update_parameters(X, sense):
     eps.resize(eps.size, 1)
     X_sum.resize(eps.size, 1)
     mean = dot(cov, dot(S, rho* eps + X_sum))
-    sense.mu = gaussian(mean, cov)
+    try:
+        sense.mu = nu*sense.mu + (1-nu)*gaussian(mean, cov)
+    except:
+        print("except snese.mu")
 
     # get_neighbours_sense(10, sense.word.model, sense)
 
     #update precision S
+    print(sense.mu.shape)
     mu = sense.mu
     X.resize(1, X.size)
     mu.resize(1, mu.size)
     tmp =  dot(trans(X-mu), X-mu)
     scale_matrix = beta*W + tmp
-    sense.S = wishart(n + beta, scale_matrix)
-    
+    try:
+        print(sense.S.shape)
+        sense.S = nu*sense.S + (1-nu)*wishart(n + beta, scale_matrix)
+        print(sense.S.shape)
+    except:
+        print("except sense.S")
+        
     S = sense.S
     D = sense.dim
 
@@ -85,13 +95,16 @@ def update_parameters(X, sense):
     eps_mean = np.dot(eps_mean, tmp)
 
     eps_cov = inv(inv(eps_prior_cov) + rho*S)
-
-    sense.word.eps = gaussian(eps_mean, eps_cov)
+ 
+    try:
+        sense.word.eps = nu*sense.word.eps + (1-nu)*gaussian(eps_mean, eps_cov)
+    except:
+        print("Except sense.word.eps")
 
     scale_matrix_W = beta*S + D*inv(sense.word.eps_cov)
     scale_matrix_W = inv(scale_matrix_W)
     
-    sense.word.W = wishart(beta + D, scale_matrix_W )
+    sense.word.W = nu*sense.word.W + (1-nu)*wishart(beta + D, scale_matrix_W )
 
     #REMOVE THIS PLEASE 
     # sense.S = inv(np.eye(sense.dim)*0.001)
@@ -114,7 +127,10 @@ def update_alpha(word):
     word.ARS = ARS(ARS_fn, ARS_fn_der, lb=0, xi = [1e-1, 1, 2], use_lower=True,\
                    n=word.num_instances,
                    k=len(word.senses))
-    word.alpha = word.ARS.draw(1)[0]
+    try:
+        word.alpha = nu*word.alpha + (1-nu)*word.ARS.draw(1)[0]
+    except:
+        print("execept alpha")
 
 def calculate_sense_prob(model, word, x):
     global S

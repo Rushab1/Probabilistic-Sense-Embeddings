@@ -200,8 +200,10 @@ def main(opts):
             opts.modelfile = opts.checkpoint_dir+"checkpoint_" + \
                     str(last_checkpoint) + ".pkl"
 
+    print("Loading Model")
     model = pickle.load(open(opts.modelfile, "rb"))
-    contexts = Contexts(model)
+    print("Done")
+    contexts = Contexts(model, model.dataDir + "_words/")
     try:
         manager = mp.Manager()
         JobQueue = manager.Queue()

@@ -45,7 +45,8 @@ class Model:
             dataDir, 
             extract_google_vec, 
             google_vec_type = "google", #'google' OR 'glove'
-            google_vec_dim = 300 #50, 100, 200, 300 for glove, 300 for google
+            google_vec_dim = 300, #50, 100, 200, 300 for glove, 300 for google
+            word_list = None
             ):
         global remove_stopwords
         self.remove_stopwords = remove_stopwords
@@ -66,7 +67,7 @@ class Model:
 
         self.extract_global_word_vectors(extract_google_vec, google_vec_file, google_vec_type)
         spf("Building Word structure ...")
-        self.build_word_sense_hierarchy()
+        self.build_word_sense_hierarchy(word_list)
         spf("DONE")
 
 
@@ -143,13 +144,19 @@ class Model:
         tmp = np.matrix(tmp)
         # self.cov_google_vec = np.dot(np.transpose(tmp), tmp) * 1e-7
 
-    def build_word_sense_hierarchy(self):
+    def build_word_sense_hierarchy(self, word_list):
         self.Words = {}
         cnt = 1
         not_found = []
-        print()
+        
+        if word_list != None:
+            rel_words = list(word_list)
+        else:
+            rel_words = self.reduced_vocab
 
-        for word in self.reduced_vocab:
+        print("REDUCED VOCAB Size: " + str(len(rel_words)))
+
+        for word in rel_words:
             if os.path.exists(self.dataDir + "_words/" + word):
                 spf(str(cnt) + "\r" )
                 cnt += 1
@@ -158,9 +165,14 @@ class Model:
                 not_found.append(word)
             
         i = 0
-        while i < len(self.reduced_vocab):
-            if self.reduced_vocab[i][0] in not_found:
-                del self.reduced_vocab[i]
+        while i < len(rel_words):
+            if type(rel_words[i]) == tuple:
+                rel_word_0 = rel_words[i][0]
+            else:
+                rel_word_0 = rel_words[i]
+
+            if rel_word_0 in not_found:
+                del rel_words[i]
             else:
                 i+=1
 
@@ -297,7 +309,7 @@ class Word:
                 self.beta)
         except:
             print("WISHART Error")
-            S = np.eye(self.wordvec_dim)*0.001
+            S = np.eye(self.dim)*0.001
             mu = gaussian(self.eps, inv(self.rho*S))
 
         return mu, S
@@ -308,20 +320,14 @@ if __name__ == "__main__":
     args.add_argument("-extract_google_vec", type=int, default=0)
     args.add_argument("-google_vec_type", type=str, default="google")
     args.add_argument("-google_vec_dim", type=int, default=300)
+    args.add_argument("-word_file", type=str, default=None)
     opts = args.parse_args()
 
-    m = Model(opts.datadir, opts.extract_google_vec, opts.google_vec_type, opts.google_vec_dim)
+    if opts.word_file:
+        word_list = open(opts.word_file).read().strip().split("\n")
+        word_list = set(word_list)
+    else:
+        word_list = None
+
+    m = Model(opts.datadir, opts.extract_google_vec, opts.google_vec_type, opts.google_vec_dim, word_list)
     pickle.dump(m, open("model.pkl", "wb"))
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,5 +1,6 @@
 from train import *
 import argparse
+from model import *
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
