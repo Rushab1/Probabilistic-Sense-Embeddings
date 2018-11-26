@@ -24,6 +24,8 @@ def inv(X):
 
 #X = num_observations * wordvec_dim
 def update_parameters(X, sense):
+    X = deepcopy(X)
+    print("__________________________")
     # get_neighbours_sense(10, sense.word.model, sense)
     global S, eps, rho, W,beta, mu ,mean, tmp, scale_matrix, cov, X_sum
     
@@ -50,6 +52,11 @@ def update_parameters(X, sense):
     eps.resize(eps.size, 1)
     X_sum.resize(eps.size, 1)
     mean = dot(cov, dot(S, rho* eps + X_sum))
+    
+    mean.resize(sense.mu.shape)
+    print(sense.mu.shape)
+    print(mean.shape)
+    print("________________________")
     try:
         sense.mu = nu*sense.mu + (1-nu)*gaussian(mean, cov)
     except:
@@ -60,7 +67,7 @@ def update_parameters(X, sense):
     #update precision S
     print(sense.mu.shape)
     mu = sense.mu
-    X.resize(1, X.size)
+    X.resize(1, mu.size)
     mu.resize(1, mu.size)
     tmp =  dot(trans(X-mu), X-mu)
     scale_matrix = beta*W + tmp
