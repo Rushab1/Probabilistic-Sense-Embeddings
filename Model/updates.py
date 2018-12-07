@@ -16,7 +16,7 @@ normPDF = multivariate_normal_fn.pdf
 
 num_auxilary_classes = 10
 sense_per = 0.1
-nu = 0.95
+nu = 0
 
 
 def inv(X):
@@ -25,7 +25,7 @@ def inv(X):
 #X = num_observations * wordvec_dim
 def update_parameters(X, sense):
     X = deepcopy(X)
-    print("__________________________")
+    # print("__________________________")
     # get_neighbours_sense(10, sense.word.model, sense)
     global S, eps, rho, W,beta, mu ,mean, tmp, scale_matrix, cov, X_sum
     
@@ -54,28 +54,37 @@ def update_parameters(X, sense):
     mean = dot(cov, dot(S, rho* eps + X_sum))
     
     mean.resize(sense.mu.shape)
-    print(sense.mu.shape)
-    print(mean.shape)
-    print("________________________")
+    # print(sense.mu.shape)
+    # print(mean.shape)
+    # print("________________________")
     try:
-        sense.mu = nu*sense.mu + (1-nu)*gaussian(mean, cov)
+        tmp = (1-nu)*gaussian(mean, cov)
+
+        sense.mu.resize(sense.dim, 1)
+        tmp.resize(sense.dim, 1)
+        # print(sense.mu.shape, tmp.shape, "===")
+        # sense.mu = deepcopy(tmp)
+        sense.mu = nu*sense.mu + tmp
     except:
         print("except snese.mu")
 
     # get_neighbours_sense(10, sense.word.model, sense)
 
     #update precision S
-    print(sense.mu.shape)
+    # print(sense.mu.shape)
     mu = sense.mu
     X.resize(1, mu.size)
     mu.resize(1, mu.size)
     tmp =  dot(trans(X-mu), X-mu)
     scale_matrix = beta*W + tmp
     try:
-        print(sense.S.shape)
-        sense.S = nu*sense.S + (1-nu)*wishart(n + beta, scale_matrix)
-        print(sense.S.shape)
-    except:
+        # print(sense.S.shape)
+        tmp = (1-nu)*inv(wishart(n + beta, scale_matrix))
+        sense.S = inv(nu*inv(sense.S) + tmp)
+        # sense.S = deepcopy(tmp)
+        # print(sense.S.shape)
+    except Exception as e:
+        print(e)
         print("except sense.S")
         
     S = sense.S
@@ -108,10 +117,21 @@ def update_parameters(X, sense):
     except:
         print("Except sense.word.eps")
 
+    try:
+        update_rho(sense)
+    except Exception as e:
+        print(e)
+        print("RHO ERROR")
+
     scale_matrix_W = beta*S + D*inv(sense.word.eps_cov)
     scale_matrix_W = inv(scale_matrix_W)
     
-    sense.word.W = nu*sense.word.W + (1-nu)*wishart(beta + D, scale_matrix_W )
+
+
+    try:
+        sense.word.W = inv(nu*inv(sense.word.W) + (1-nu)*inv(wishart(beta + D, scale_matrix_W )))
+    except:
+        print("except W")
 
     #REMOVE THIS PLEASE 
     # sense.S = inv(np.eye(sense.dim)*0.001)
@@ -130,6 +150,30 @@ def ARS_fn_der(alpha, n, k):
     val -= digammafn(n+alpha)
     return val
     
+def update_rho(sense):
+    mu = sense.mu
+    S = sense.S
+    eps = sense.word.eps
+    D = int(sense.dim)
+
+    mu_shape = mu.shape 
+    eps_shape = eps.shape
+
+    mu.resize(D,1)
+    eps.resize(D,1)
+
+    tmp = dot(transpose(mu-eps), S)
+    tmp = dot(tmp, mu-eps)
+
+    shape = 0.5*D+0.25
+    #second 0.5 = alpha/(2beta) = 0.5 since alpha =beta = 0.5
+    scale = 0.5*tmp + 0.5
+
+    sense.word.rho = float(nu*sense.word.rho + (1-nu)*gamma(shape, scale, 1))
+    # print(sense.word.word, sense.word.rho)
+    mu.resize(mu_shape)
+    eps.resize(eps_shape)
+
 def update_alpha(word):
     word.ARS = ARS(ARS_fn, ARS_fn_der, lb=0, xi = [1e-1, 1, 2], use_lower=True,\
                    n=word.num_instances,

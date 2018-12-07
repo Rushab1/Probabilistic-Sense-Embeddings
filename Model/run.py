@@ -7,7 +7,7 @@ if __name__ == "__main__":
     args.add_argument("-checkpoint_dir", type=str, default="../modelfiles/")
     args.add_argument("-modelfile", type=str, default="model.pkl")
     args.add_argument("-restart", type=str, default=0)
-    args.add_argument("-num_batches", type=str, default=10)
+    args.add_argument("-num_batches", type=str, default=100)
     opts = args.parse_args()
 
     main(opts)
